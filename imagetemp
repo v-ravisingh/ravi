@@ -1,0 +1,104 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+  
+    "parameters": {
+      "ManageID":{
+        "type": "string"
+      },
+      "galleryName": {
+        "type": "string"
+      },
+      "imageTemplateName": {
+        "type": "string"
+      },
+      "ImageDef": {
+        "type": "string"
+      },
+      "ImageVersion" : {
+        "type": "string"
+      }
+      
+    },
+    "variables": {
+      
+      "setDSCconf": "https://cogctaefujitsutest.blob.core.windows.net/imagebuilderpoc/setDSCconf.ps1?sp=r&st=2024-03-28T09:31:07Z&se=2026-12-31T17:31:07Z&spr=https&sv=2022-11-02&sr=b&sig=ltOOV%2BPmmMZn9TgTAaF5%2Fjs%2B72B5qTWC85oWKStx9Zo%3D"
+    
+    },
+    "resources": [
+      {
+        "name": "[parameters('imageTemplateName')]",
+        "type": "Microsoft.VirtualMachineImages/imageTemplates",
+        "apiVersion": "2022-02-14",
+        "location": "East US",
+        
+        "identity": {
+          "type": "UserAssigned",
+          "userAssignedIdentities": {
+            "[resourceID('Microsoft.ManagedIdentity/userAssignedIdentities/',parameters('ManageID'))]": {
+              
+            }
+          }
+        },
+        "properties": {
+          "buildTimeoutInMinutes": 210,
+
+          "stagingResourceGroup": "/subscriptions/a9655974-eb03-42b7-a864-87f96fc66da9/resourceGroups/aibImageRG",
+
+          "vmProfile": {
+            "vmSize": "Standard_B2s",
+            "osDiskSizeGB": 127,
+            "vnetConfig": {
+                "subnetId": "/subscriptions/a9655974-eb03-42b7-a864-87f96fc66da9/resourceGroups/existingVnetRG/providers/Microsoft.Network/virtualNetworks/myexistingvnet01/subnets/subnet01"
+            }
+
+          },
+          "source": {
+            "type": "PlatformImage",
+            "publisher": "MicrosoftWindowsServer",
+            "offer": "windowsserver-gen2preview",
+            "sku": "2019-Datacenter-gen2",
+            "version": "latest"
+          },
+          "customize": [
+            {
+              "type": "PowerShell",
+              "name": "tempFile",
+              "inline": [
+                "New-Item -Type Directory -Path 'c:\\' -Name temp"
+              ]
+            },
+            {
+              "type": "PowerShell",
+              "name": "Package Installation",
+              "runElevated": true,
+              "scriptUri": "[variables('setDSCconf')]"
+            },            
+            {
+              "type": "WindowsUpdate",
+              "searchCriteria": "IsInstalled=0",
+              "filters": [
+                "exclude:$_.Title -like '*Preview*'",
+                "include:$true"
+              ],
+              "updateLimit": 20
+            }
+          ],
+          "distribute": [
+            {
+              "type": "SharedImage",
+              "galleryImageId": "[concat(resourceGroup().id,'/providers/Microsoft.Compute/galleries/',parameters('galleryName'),'/images/',parameters('ImageDef'),'/versions/',parameters('ImageVersion'))]",
+              "runOutputName": "[parameters('imageTemplateName')]",
+              "artifactTags": {
+                "baseosimg": "WindowsServer"
+              },
+              "replicationRegions": [
+                "eastus"
+                
+              ]
+            }
+          ]
+        }
+      }
+    ]
+  }
